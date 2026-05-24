@@ -1,0 +1,719 @@
+local passed = 0
+local total = 0
+local funcResults = {}  -- {name, passed, total, details = {{status, msg}} }
+
+local function addSubTest(funcName, testFunc)
+	local ok, result = pcall(testFunc)
+	local status, msg
+	if not ok then
+		status = "ERROR"
+		msg = tostring(result)
+	elseif result == true then
+		status = "PASS"
+		msg = ""
+	else
+		status = "FAIL"
+		msg = tostring(result)
+	end
+	local entry = nil
+	for _, v in ipairs(funcResults) do
+		if v.name == funcName then entry = v break end
+	end
+	if not entry then
+		entry = {name = funcName, passed = 0, total = 0, details = {}}
+		table.insert(funcResults, entry)
+	end
+	entry.total = entry.total + 1
+	if status == "PASS" then
+		entry.passed = entry.passed + 1
+		passed = passed + 1
+	end
+	total = total + 1
+	table.insert(entry.details, {status = status, msg = msg})
+end
+
+-- Prepare environment
+local testFolder = "UNC_Test_" .. tostring(math.random(10000, 99999))
+local testFileA = testFolder .. "/a.txt"
+local testFileB = testFolder .. "/b.txt"
+local testFileC = testFolder .. "/c.txt"
+makefolder(testFolder)
+
+local testScript = getcallingscript()
+
+-- ========== getrawmetatable ==========
+addSubTest("getrawmetatable", function() return type(getrawmetatable({})) == "table" end)
+addSubTest("getrawmetatable", function() return getrawmetatable({}).__index == nil end)
+addSubTest("getrawmetatable", function() local mt = {__len = function() return 5 end}; local t = setmetatable({}, mt); return getrawmetatable(t) == mt end)
+addSubTest("getrawmetatable", function() return pcall(getrawmetatable, nil) == false end)
+addSubTest("getrawmetatable", function() local t = setmetatable({}, nil); return getrawmetatable(t) == nil end)
+addSubTest("getrawmetatable", function() local t = setmetatable({}, {__add = function(a,b) return a[1]+b[1] end}); local mt = getrawmetatable(t); return mt.__add ~= nil end)
+addSubTest("getrawmetatable", function() local t = {}; local mt = {__call = function() end}; setmetatable(t, mt); return getrawmetatable(t) == mt end)
+addSubTest("getrawmetatable", function() local t = setmetatable({}, {}); local t2 = setmetatable({}, t); return type(getrawmetatable(t2)) == "table" end)
+addSubTest("getrawmetatable", function() local t = setmetatable({}, {__metatable = "locked"}); return getrawmetatable(t) == "locked" end)
+addSubTest("getrawmetatable", function() local t = setmetatable({}, {__metatable = false}); return getrawmetatable(t) == false end)
+addSubTest("getrawmetatable", function() local t = setmetatable({}, {__index = function() return 1 end, __metatable = {}}); return type(getrawmetatable(t)) == "table" and getrawmetatable(t).__index ~= nil end)
+addSubTest("getrawmetatable", function() return pcall(getrawmetatable, 123) == false end)
+
+-- ========== setrawmetatable ==========
+addSubTest("setrawmetatable", function() local t = {}; local mt = {}; setrawmetatable(t, mt); return getrawmetatable(t) == mt end)
+addSubTest("setrawmetatable", function() local t = {}; setrawmetatable(t, nil); return getrawmetatable(t) == nil end)
+addSubTest("setrawmetatable", function() local t = {}; local mt = {__call = function() return 99 end}; setrawmetatable(t, mt); local ok, res = pcall(t); return res == 99 end)
+addSubTest("setrawmetatable", function() local t = setmetatable({}, {}); setrawmetatable(t, nil); return getrawmetatable(t) == nil end)
+addSubTest("setrawmetatable", function() local t = {}; local mt = {__tostring = function(self) return "custom" end}; setrawmetatable(t, mt); return tostring(t) == "custom" end)
+addSubTest("setrawmetatable", function() local t = {}; setrawmetatable(t, {__index = {a=1}}); return t.a == 1 end)
+addSubTest("setrawmetatable", function() local t = {}; pcall(function() setrawmetatable(t, 123) end); return true end) -- should error but not crash
+addSubTest("setrawmetatable", function() local t = setmetatable({}, {__metatable = "locked"}); setrawmetatable(t, {__add = function() end}); return getrawmetatable(t) ~= "locked" end)
+addSubTest("setrawmetatable", function() local t = {}; setrawmetatable(t, {__newindex = function(t,k,v) rawset(t,k,v.."!") end}); t.x = "hi"; return t.x == "hi!" end)
+addSubTest("setrawmetatable", function() local t = setmetatable({}, {}); setrawmetatable(t, setmetatable({}, {})); return type(getrawmetatable(t)) == "table" end)
+
+-- ========== makefolder ==========
+addSubTest("makefolder", function() local f = testFolder .. "/sub1"; makefolder(f); return isfolder(f) end)
+addSubTest("makefolder", function() makefolder(testFolder); return isfolder(testFolder) end)
+addSubTest("makefolder", function() local deep = testFolder .. "/a/b/c"; makefolder(deep); return isfolder(deep) end)
+addSubTest("makefolder", function() return pcall(makefolder, "") == true end)
+addSubTest("makefolder", function() local f = testFolder .. "/sub2"; makefolder(f); return isfolder(f) end)
+addSubTest("makefolder", function() local f = testFolder .. "/already_exists"; makefolder(f); makefolder(f); return isfolder(f) end)
+addSubTest("makefolder", function() local f = testFolder .. "/special_chars_!@#"; makefolder(f); return isfolder(f) end)
+addSubTest("makefolder", function() local f = testFolder .. "/" .. string.rep("a", 50); makefolder(f); return isfolder(f) end)
+addSubTest("makefolder", function() local f = testFolder .. "/trailing/"; makefolder(f); return isfolder(testFolder .. "/trailing") or isfolder(f) end)
+addSubTest("makefolder", function() local f = testFolder .. "/deep/1/2/3/4/5"; makefolder(f); return isfolder(f) end)
+
+-- ========== getscriptbytecode ==========
+addSubTest("getscriptbytecode", function() if testScript then local bc = getscriptbytecode(testScript); return type(bc) == "string" and #bc > 0 else return false, "no script" end end)
+addSubTest("getscriptbytecode", function() local s = Instance.new("LocalScript"); s.Source = "print(1)"; s.Parent = game.Players.LocalPlayer.PlayerGui; local bc = getscriptbytecode(s); s:Destroy(); return type(bc) == "string" and #bc > 0 end)
+addSubTest("getscriptbytecode", function() local s = Instance.new("ModuleScript"); s.Source = "return {}"; s.Parent = workspace; local bc = getscriptbytecode(s); s:Destroy(); return type(bc) == "string" and #bc > 0 end)
+addSubTest("getscriptbytecode", function() return pcall(function() getscriptbytecode(nil) end) == false end)
+addSubTest("getscriptbytecode", function() local s = Instance.new("ModuleScript"); s.Source = "return 1,2,3"; s.Parent = workspace; local bc = getscriptbytecode(s); s:Destroy(); return #bc > 10 end)
+addSubTest("getscriptbytecode", function() local s = Instance.new("LocalScript"); s.Source = "local a = {...}"; s.Parent = game.Players.LocalPlayer.PlayerGui; local bc = getscriptbytecode(s); s:Destroy(); return type(bc) == "string" end)
+addSubTest("getscriptbytecode", function() local s = Instance.new("Script"); s.Source = ""; s.Parent = workspace; local bc = getscriptbytecode(s); s:Destroy(); return type(bc) == "string" end)
+addSubTest("getscriptbytecode", function() local s = Instance.new("ModuleScript"); s.Source = "syntax error"; s.Parent = workspace; local bc = getscriptbytecode(s); s:Destroy(); return type(bc) == "string" and #bc > 0 end)
+addSubTest("getscriptbytecode", function() local s = Instance.new("LocalScript"); s.Source = "return 42"; s.Parent = game.Players.LocalPlayer.PlayerGui; local bc1 = getscriptbytecode(s); s.Source = "return 99"; local bc2 = getscriptbytecode(s); s:Destroy(); return bc1 ~= bc2 end)
+
+-- ========== setthreadidentity ==========
+addSubTest("setthreadidentity", function() local old = getthreadidentity(); setthreadidentity(2); local n = getthreadidentity(); setthreadidentity(old); return n == 2 end)
+addSubTest("setthreadidentity", function() local old = getthreadidentity(); setthreadidentity(7); local n = getthreadidentity(); setthreadidentity(old); return type(n) == "number" end)
+addSubTest("setthreadidentity", function() local old = getthreadidentity(); setthreadidentity(0); local n = getthreadidentity(); setthreadidentity(old); return n == 0 end)
+addSubTest("setthreadidentity", function() return pcall(setthreadidentity, -1) == true end)
+addSubTest("setthreadidentity", function() local old = getthreadidentity(); setthreadidentity(old); return getthreadidentity() == old end)
+addSubTest("setthreadidentity", function() local old = getthreadidentity(); setthreadidentity(2.7); local n = getthreadidentity(); setthreadidentity(old); return n == 2 or n == 3 end)
+addSubTest("setthreadidentity", function() local old = getthreadidentity(); setthreadidentity(old + 1); local n = getthreadidentity(); setthreadidentity(old); return n == old + 1 end)
+addSubTest("setthreadidentity", function() local old = getthreadidentity(); setthreadidentity(999); local n = getthreadidentity(); setthreadidentity(old); return n == 999 end)
+addSubTest("setthreadidentity", function() return pcall(setthreadidentity, nil) == false end)
+
+-- ========== delfile ==========
+writefile(testFileA, "data")
+addSubTest("delfile", function() delfile(testFileA); return not isfile(testFileA) end)
+addSubTest("delfile", function() delfile("/nonexistent/file.lua"); return true end)
+addSubTest("delfile", function() writefile(testFileB, "x"); delfile(testFileB); return not isfile(testFileB) end)
+addSubTest("delfile", function() writefile(testFileA, "again"); delfile(testFileA); return not isfile(testFileA) end)
+addSubTest("delfile", function() local f = testFolder .. "/special_!@#.txt"; writefile(f, "x"); delfile(f); return not isfile(f) end)
+addSubTest("delfile", function() local f = testFolder .. "/todelete"; writefile(f, "something"); delfile(f); delfile(f); return true end) -- double delete no error
+addSubTest("delfile", function() delfile(nil); return true end) -- should not crash
+
+-- ========== request ==========
+addSubTest("request", function() return pcall(function() request({Url = "http://httpbin.org/get", Method = "GET"}) end) end)
+addSubTest("request", function() return pcall(function() request({Url = "http://httpbin.org/post", Method = "POST", Body = "test"}) end) end)
+addSubTest("request", function() return pcall(function() request({Url = "invalid-url", Method = "GET"}) end) end)
+addSubTest("request", function() return pcall(function() request({}) end) end)
+addSubTest("request", function() return type(request) == "function" end)
+addSubTest("request", function() local ok, res = pcall(function() request({Url = "http://httpbin.org/status/404"}) end); return ok end)
+addSubTest("request", function() return pcall(function() request({Url = "http://httpbin.org/headers", Headers = {["X-Test"] = "UNC"}}) end) end)
+addSubTest("request", function() return pcall(function() request({Url = "http://httpbin.org/delay/1", Method = "GET"}) end) end)
+addSubTest("request", function() local ok, res = pcall(function() return request({Url = "http://httpbin.org/get"}) end); return ok end)
+addSubTest("request", function() return pcall(function() request({Url = "http://httpbin.org/put", Method = "PUT", Body = "data"}) end) end)
+
+-- ========== Drawing.Fonts ==========
+addSubTest("Drawing.Fonts", function() return type(Drawing.Fonts) == "table" end)
+addSubTest("Drawing.Fonts", function() return #Drawing.Fonts > 0 end)
+addSubTest("Drawing.Fonts", function() return Drawing.Fonts[1] ~= nil end)
+addSubTest("Drawing.Fonts", function() for _, v in ipairs(Drawing.Fonts) do if type(v) ~= "string" then return false end end; return true end)
+addSubTest("Drawing.Fonts", function() return table.find(Drawing.Fonts, "Arial") ~= nil or table.find(Drawing.Fonts, "Legacy") ~= nil end)
+addSubTest("Drawing.Fonts", function() return #Drawing.Fonts >= 3 end)
+
+-- ========== isscriptable ==========
+addSubTest("isscriptable", function() local p = Instance.new("Part", workspace); local r = isscriptable(p, "Name"); p:Destroy(); return r == true end)
+addSubTest("isscriptable", function() local p = Instance.new("Part", workspace); setscriptable(p, "Name", false); local r = isscriptable(p, "Name"); p:Destroy(); return r == false end)
+addSubTest("isscriptable", function() local p = Instance.new("Part", workspace); local r = isscriptable(p, "Transparency"); p:Destroy(); return type(r) == "boolean" end)
+addSubTest("isscriptable", function() local p = Instance.new("Part", workspace); return pcall(function() isscriptable(p, "NonExistent") end) end)
+addSubTest("isscriptable", function() local p = Instance.new("Part", workspace); setscriptable(p, "Size", false); local r = isscriptable(p, "Size"); p:Destroy(); return r == false end)
+addSubTest("isscriptable", function() local p = Instance.new("Part", workspace); local r = isscriptable(p, "Position"); p:Destroy(); return r end)
+addSubTest("isscriptable", function() return pcall(isscriptable, nil, "Name") == false end)
+addSubTest("isscriptable", function() local p = Instance.new("Part", workspace); local r = isscriptable(p, "BrickColor"); p:Destroy(); return r == true end)
+
+-- ========== iscclosure ==========
+addSubTest("iscclosure", function() return iscclosure(print) == true end)
+addSubTest("iscclosure", function() return iscclosure(function() end) == false end)
+addSubTest("iscclosure", function() return iscclosure(newcclosure(function() end)) == true end)
+addSubTest("iscclosure", function() return iscclosure(nil) == false end)
+addSubTest("iscclosure", function() local f = function() end; return iscclosure(f) == false end)
+addSubTest("iscclosure", function() local f = clonefunction(print); return iscclosure(f) == true end)
+addSubTest("iscclosure", function() return iscclosure(123) == false end)
+addSubTest("iscclosure", function() return iscclosure("string") == false end)
+
+-- ========== debug.setconstant ==========
+addSubTest("debug.setconstant", function() local f = function() return "old" end; debug.setconstant(f, 1, "new"); return f() == "new" end)
+addSubTest("debug.setconstant", function() local f = function() return 1,2 end; debug.setconstant(f, 2, 99); local _,y = f(); return y == 99 end)
+addSubTest("debug.setconstant", function() local f = function() return true end; debug.setconstant(f, 1, false); return f() == false end)
+addSubTest("debug.setconstant", function() local f = function() return nil end; debug.setconstant(f, 1, "notnil"); return f() == "notnil" end)
+addSubTest("debug.setconstant", function() local f = function() return "a", "b", "c" end; debug.setconstant(f, 3, "Z"); local _,_,z = f(); return z == "Z" end)
+addSubTest("debug.setconstant", function() local f = function() return 42 end; return pcall(function() debug.setconstant(f, 999, 1) end) == false end)
+addSubTest("debug.setconstant", function() return pcall(function() debug.setconstant(123, 1, 1) end) == false end)
+addSubTest("debug.setconstant", function() local f = function() return {} end; debug.setconstant(f, 1, nil); return f() == nil end)
+addSubTest("debug.setconstant", function() local f = function() return 3.14 end; debug.setconstant(f, 1, 2.71); return math.abs(f() - 2.71) < 0.01 end)
+
+-- ========== debug.getprotos ==========
+addSubTest("debug.getprotos", function() local f = function() local a=function() end; local b=function() end end; local p = debug.getprotos(f); return #p == 2 end)
+addSubTest("debug.getprotos", function() local f = function() end; local p = debug.getprotos(f); return #p == 0 end)
+addSubTest("debug.getprotos", function() local f = function() local a=function() return 5 end end; local p = debug.getprotos(f); return p[1]() == 5 end)
+addSubTest("debug.getprotos", function() local f = function() local function inner() return "inner" end end; local p = debug.getprotos(f); return p[1]() == "inner" end)
+addSubTest("debug.getprotos", function() local f = function() local a=function() local b=function() end end end; local p = debug.getprotos(f); return #p == 1 and type(p[1]) == "function" end)
+addSubTest("debug.getprotos", function() return pcall(debug.getprotos, nil) == false end)
+addSubTest("debug.getprotos", function() local f = function() local a,b,c = function() end, function() end, function() end end; local p = debug.getprotos(f); return #p == 3 end)
+
+-- ========== lz4compress ==========
+addSubTest("lz4compress", function() local c = lz4compress("hello"); return type(c) == "string" and #c > 0 end)
+addSubTest("lz4compress", function() local s = string.rep("A", 1000); local c = lz4compress(s); return #c < #s end)
+addSubTest("lz4compress", function() return pcall(lz4compress, "") end)
+addSubTest("lz4compress", function() return pcall(lz4compress, 123) end)
+addSubTest("lz4compress", function() local orig = "\0\1\2\3\255"; local c = lz4compress(orig); return lz4decompress(c) == orig end)
+addSubTest("lz4compress", function() local long = string.rep("Test", 1000); local c = lz4compress(long); return #c < #long end)
+addSubTest("lz4compress", function() local orig = "Hello World! 12345"; local comp = lz4compress(orig); return lz4decompress(comp) == orig end)
+
+-- ========== getscripts ==========
+addSubTest("getscripts", function() return type(getscripts()) == "table" end)
+addSubTest("getscripts", function() return #getscripts() >= 0 end)
+addSubTest("getscripts", function() local s = getscripts(); for _,v in ipairs(s) do if typeof(v) ~= "Instance" then return false end end; return true end)
+addSubTest("getscripts", function() local sc = getscripts(); return table.find(sc, testScript) ~= nil end)
+addSubTest("getscripts", function() local s = Instance.new("LocalScript", game.Players.LocalPlayer.PlayerGui); s.Source = "local x=1"; local sc = getscripts(); local found = table.find(sc, s) ~= nil; s:Destroy(); return found end)
+
+-- ========== isfolder ==========
+addSubTest("isfolder", function() return isfolder(testFolder) == true end)
+addSubTest("isfolder", function() return isfolder("/fake/path") == false end)
+addSubTest("isfolder", function() return isfolder("") == false end)
+addSubTest("isfolder", function() writefile(testFileA, "x"); local r = isfolder(testFileA); delfile(testFileA); return r == false end)
+addSubTest("isfolder", function() return isfolder(nil) == false end)
+addSubTest("isfolder", function() return isfolder(testFolder .. "/sub1") == true end)
+
+-- ========== sethiddenproperty ==========
+addSubTest("sethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Hidden", true); local h = gethiddenproperty(p, "Hidden"); p:Destroy(); return h == true end)
+addSubTest("sethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Transparency", 0.5); local h = gethiddenproperty(p, "Transparency"); p:Destroy(); return h == 0.5 end)
+addSubTest("sethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Size", Vector3.new(2,2,2)); local h = gethiddenproperty(p, "Size"); p:Destroy(); return h == Vector3.new(2,2,2) end)
+addSubTest("sethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Color", Color3.new(0,1,0)); local h = gethiddenproperty(p, "Color"); p:Destroy(); return h == Color3.new(0,1,0) end)
+addSubTest("sethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Name", "HiddenName"); local h = gethiddenproperty(p, "Name"); p:Destroy(); return h == "HiddenName" end)
+addSubTest("sethiddenproperty", function() local p = Instance.new("Part", workspace); pcall(function() sethiddenproperty(p, "NonExistent", 5) end); p:Destroy(); return true end)
+addSubTest("sethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Anchored", true); local h = gethiddenproperty(p, "Anchored"); p:Destroy(); return h == true end)
+addSubTest("sethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "CanCollide", false); local h = gethiddenproperty(p, "CanCollide"); p:Destroy(); return h == false end)
+
+-- ========== getthreadidentity ==========
+addSubTest("getthreadidentity", function() return type(getthreadidentity()) == "number" end)
+addSubTest("getthreadidentity", function() return getthreadidentity() >= 0 end)
+addSubTest("getthreadidentity", function() local old = getthreadidentity(); setthreadidentity(2); local n = getthreadidentity(); setthreadidentity(old); return n == 2 end)
+addSubTest("getthreadidentity", function() local old = getthreadidentity(); setthreadidentity(8); local n = getthreadidentity(); setthreadidentity(old); return n == 8 end)
+addSubTest("getthreadidentity", function() local co = coroutine.create(function() return getthreadidentity() end); local _, id = coroutine.resume(co); return type(id) == "number" end)
+addSubTest("getthreadidentity", function() local id1 = getthreadidentity(); local co = coroutine.create(function() return getthreadidentity() end); local _, id2 = coroutine.resume(co); return id1 ~= id2 end) -- may differ
+
+-- ========== readfile ==========
+writefile(testFileA, "hello")
+addSubTest("readfile", function() return readfile(testFileA) == "hello" end)
+addSubTest("readfile", function() writefile(testFileA, "new"); return readfile(testFileA) == "new" end)
+addSubTest("readfile", function() return pcall(readfile, "/nonexistent") == false end)
+addSubTest("readfile", function() writefile(testFileA, ""); return readfile(testFileA) == "" end)
+addSubTest("readfile", function() local bin = "\0\1\255"; writefile(testFileA, bin); local r = readfile(testFileA); return r == bin end)
+addSubTest("readfile", function() return pcall(readfile, testFolder) == false end)
+addSubTest("readfile", function() local long = string.rep("X", 10000); writefile(testFileA, long); local r = readfile(testFileA); return #r == 10000 and r == long end)
+
+-- ========== getscriptclosure ==========
+addSubTest("getscriptclosure", function() if testScript then local f = getscriptclosure(testScript); return type(f) == "function" else return false, "no script" end end)
+addSubTest("getscriptclosure", function() local s = Instance.new("LocalScript", game.Players.LocalPlayer.PlayerGui); s.Source = "print(1)"; local f = getscriptclosure(s); s:Destroy(); return type(f) == "function" end)
+addSubTest("getscriptclosure", function() local s = Instance.new("ModuleScript", workspace); s.Source = "return {}"; local f = getscriptclosure(s); s:Destroy(); return type(f) == "function" end)
+addSubTest("getscriptclosure", function() local s = Instance.new("LocalScript", game.Players.LocalPlayer.PlayerGui); s.Source = "return 42"; local f = getscriptclosure(s); local ok, val = pcall(f); s:Destroy(); return ok and val == 42 end)
+addSubTest("getscriptclosure", function() local s = Instance.new("ModuleScript", workspace); s.Source = "syntax error"; local f = getscriptclosure(s); s:Destroy(); return f == nil or type(f) == "function" end)
+addSubTest("getscriptclosure", function() local s = Instance.new("Script", workspace); s.Source = "function test() return 'ok' end"; local f = getscriptclosure(s); s:Destroy(); return type(f) == "function" end)
+
+-- ========== setscriptable ==========
+addSubTest("setscriptable", function() local p = Instance.new("Part", workspace); setscriptable(p, "Name", false); local r = isscriptable(p, "Name"); p:Destroy(); return r == false end)
+addSubTest("setscriptable", function() local p = Instance.new("Part", workspace); setscriptable(p, "Transparency", true); local r = isscriptable(p, "Transparency"); p:Destroy(); return r == true end)
+addSubTest("setscriptable", function() local p = Instance.new("Part", workspace); setscriptable(p, "Anchored", true); p:Destroy(); return true end)
+addSubTest("setscriptable", function() local p = Instance.new("Part", workspace); setscriptable(p, "Size", false); p:Destroy(); return true end)
+addSubTest("setscriptable", function() local p = Instance.new("Part", workspace); setscriptable(p, "BrickColor", true); p:Destroy(); return true end)
+addSubTest("setscriptable", function() local p = Instance.new("Part", workspace); setscriptable(p, "NonExistent", false); p:Destroy(); return true end) -- should not error
+addSubTest("setscriptable", function() return pcall(setscriptable, nil, "Name", false) == false end)
+
+-- ========== Drawing.new ==========
+addSubTest("Drawing.new", function() local d = Drawing.new("Text"); if not d then return false end; d.Text = "UNC"; d.Visible = true; d:Remove(); return true end)
+addSubTest("Drawing.new", function() local d = Drawing.new("Line"); if not d then return false end; d.Visible = true; d:Remove(); return true end)
+addSubTest("Drawing.new", function() local d = Drawing.new("Circle"); if not d then return false end; d.Visible = true; d:Remove(); return true end)
+addSubTest("Drawing.new", function() local d = Drawing.new("Square"); if not d then return false end; d.Visible = true; d:Remove(); return true end)
+addSubTest("Drawing.new", function() return pcall(Drawing.new, "InvalidType") == false end)
+addSubTest("Drawing.new", function() local d = Drawing.new("Quad"); if not d then return false end; d.Visible = true; d:Remove(); return true end)
+addSubTest("Drawing.new", function() local d = Drawing.new("Triangle"); if not d then return false end; d.Visible = true; d:Remove(); return true end)
+addSubTest("Drawing.new", function() local d = Drawing.new("Image"); if not d then return false end; d.Data = ""; d.Visible = true; d:Remove(); return true end)
+addSubTest("Drawing.new", function() local d = Drawing.new("Text"); d.Text = "Test"; d.Visible = true; d.Size = 20; d.Color = Color3.new(1,0,0); d:Remove(); return true end)
+addSubTest("Drawing.new", function() local d = Drawing.new("Text"); d.Text = "Line1\nLine2"; d.Visible = true; d:Remove(); return true end)
+addSubTest("Drawing.new", function() local d = Drawing.new("Line"); d.Thickness = 2; d.Color = Color3.new(0,1,0); d.Visible = true; d:Remove(); return true end)
+
+-- ========== debug.getupvalues (array) ==========
+addSubTest("debug.getupvalues", function() local a,b = 1,2; local f = function() return a+b end; local ups = debug.getupvalues(f); return #ups == 2 and ups[1] == 1 and ups[2] == 2 end)
+addSubTest("debug.getupvalues", function() local f = function() end; local ups = debug.getupvalues(f); return #ups == 0 end)
+addSubTest("debug.getupvalues", function() local a = "x"; local f = function() return a end; local ups = debug.getupvalues(f); return ups[1] == "x" end)
+addSubTest("debug.getupvalues", function() local function outer() local x=5; local f=function() return x end; return debug.getupvalues(f) end; return outer()[1] == 5 end)
+addSubTest("debug.getupvalues", function() local t = {}; local f = function() return t end; local ups = debug.getupvalues(f); return ups[1] == t end)
+addSubTest("debug.getupvalues", function() local f = newcclosure(function() end); return pcall(function() debug.getupvalues(f) end) == false end)
+addSubTest("debug.getupvalues", function() return pcall(debug.getupvalues, nil) == false end)
+
+-- ========== hookmetamethod ==========
+addSubTest("hookmetamethod", function() local t = setmetatable({}, {__index = function() return 0 end}); local old = hookmetamethod(t, "__index", function() return 42 end); return t[1] == 42 end)
+addSubTest("hookmetamethod", function() local t = setmetatable({}, {__tostring = function() return "orig" end}); hookmetamethod(t, "__tostring", function() return "hooked" end); return tostring(t) == "hooked" end)
+addSubTest("hookmetamethod", function() local t = setmetatable({}, {__add = function(a,b) return a[1]+b[1] end}); hookmetamethod(t, "__add", function(a,b) return 999 end); return t + t == 999 end)
+addSubTest("hookmetamethod", function() local t = setmetatable({}, {__index = {a=1}}); local old = hookmetamethod(t, "__index", function(self,k) return "hooked_"..k end); return t.a == "hooked_a" end)
+addSubTest("hookmetamethod", function() local t = setmetatable({}, {}); hookmetamethod(t, "__newindex", function(self,k,v) rawset(self,k,v+1) end); t.x = 5; return t.x == 6 end)
+addSubTest("hookmetamethod", function() local t = setmetatable({}, {__len = function() return 5 end}); hookmetamethod(t, "__len", function() return 99 end); return #t == 99 end)
+
+-- ========== debug.getproto ==========
+addSubTest("debug.getproto", function() local f = function() local inner = function() return 5 end end; local p = debug.getproto(f, 1); return p() == 5 end)
+addSubTest("debug.getproto", function() local f = function() local a = function() return 1 end; local b = function() return 2 end end; return debug.getproto(f, 2)() == 2 end)
+addSubTest("debug.getproto", function() local f = function() end; return pcall(debug.getproto, f, 1) == false end)
+addSubTest("debug.getproto", function() local f = function() local function inner() return "deep" end end; return debug.getproto(f, 1)() == "deep" end)
+addSubTest("debug.getproto", function() local f = function() local a = function() local b = function() end end end; local p = debug.getproto(f, 1); return type(p) == "function" end)
+addSubTest("debug.getproto", function() return pcall(debug.getproto, nil, 1) == false end)
+
+-- ========== getrunningscripts ==========
+addSubTest("getrunningscripts", function() return type(getrunningscripts()) == "table" end)
+addSubTest("getrunningscripts", function() return #getrunningscripts() >= 0 end)
+addSubTest("getrunningscripts", function() for _, v in ipairs(getrunningscripts()) do if typeof(v) ~= "Instance" then return false end end; return true end)
+addSubTest("getrunningscripts", function() return table.find(getrunningscripts(), testScript) ~= nil end)
+
+-- ========== checkcaller ==========
+addSubTest("checkcaller", function() return type(checkcaller()) == "boolean" end)
+addSubTest("checkcaller", function() local function inner() return checkcaller() end; return type(inner()) == "boolean" end)
+addSubTest("checkcaller", function() return checkcaller() == false end)
+addSubTest("checkcaller", function() local co = coroutine.create(function() return checkcaller() end); local _, val = coroutine.resume(co); return type(val) == "boolean" end)
+addSubTest("checkcaller", function() return pcall(checkcaller) end)
+
+-- ========== debug.setupvalue ==========
+addSubTest("debug.setupvalue", function() local x = 1; local f = function() return x end; debug.setupvalue(f, 1, 99); return f() == 99 end)
+addSubTest("debug.setupvalue", function() local a,b = 10,20; local f = function() return a,b end; debug.setupvalue(f, 2, 88); local _,y = f(); return y == 88 end)
+addSubTest("debug.setupvalue", function() local x = {}; local f = function() return x end; debug.setupvalue(f, 1, nil); return f() == nil end)
+addSubTest("debug.setupvalue", function() local x = "old"; local f = function() return x end; debug.setupvalue(f, 1, "new"); return f() == "new" end)
+addSubTest("debug.setupvalue", function() local f = function() end; return pcall(debug.setupvalue, f, 1, 5) == false end)
+addSubTest("debug.setupvalue", function() local a,b,c = 1,2,3; local f = function() return a,b,c end; debug.setupvalue(f, 3, 33); local _,_,z = f(); return z == 33 end)
+
+-- ========== gethiddenproperty ==========
+addSubTest("gethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Hidden", true); local h = gethiddenproperty(p, "Hidden"); p:Destroy(); return h == true end)
+addSubTest("gethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Size", Vector3.new(2,2,2)); local h = gethiddenproperty(p, "Size"); p:Destroy(); return h == Vector3.new(2,2,2) end)
+addSubTest("gethiddenproperty", function() local p = Instance.new("Part", workspace); local h = gethiddenproperty(p, "NonExistent"); p:Destroy(); return h == nil end)
+addSubTest("gethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Color", Color3.new(1,0,0)); local c = gethiddenproperty(p, "Color"); p:Destroy(); return c == Color3.new(1,0,0) end)
+addSubTest("gethiddenproperty", function() local p = Instance.new("Part", workspace); sethiddenproperty(p, "Transparency", 0.8); local t = gethiddenproperty(p, "Transparency"); p:Destroy(); return t == 0.8 end)
+addSubTest("gethiddenproperty", function() local p = Instance.new("Part", workspace); local t = gethiddenproperty(p, "NotSet"); p:Destroy(); return t == nil end)
+
+-- ========== writefile ==========
+addSubTest("writefile", function() writefile(testFileA, "data1"); return readfile(testFileA) == "data1" end)
+addSubTest("writefile", function() writefile(testFileB, ""); return readfile(testFileB) == "" end)
+addSubTest("writefile", function() writefile(testFileA, "line1\nline2"); return readfile(testFileA) == "line1\nline2" end)
+addSubTest("writefile", function() local bin = "\0\1\2\3\255"; writefile(testFileA, bin); return readfile(testFileA) == bin end)
+addSubTest("writefile", function() writefile(testFileA, "overwrite"); writefile(testFileA, "newer"); return readfile(testFileA) == "newer" end)
+addSubTest("writefile", function() local long = string.rep("Z", 5000); writefile(testFileA, long); return #readfile(testFileA) == 5000 end)
+addSubTest("writefile", function() return pcall(writefile, nil, "data") == false end)
+
+-- ========== setrenderproperty ==========
+addSubTest("setrenderproperty", function() local p = Instance.new("Part", workspace); setrenderproperty(p, "Transparency", 1); local t = getrenderproperty(p, "Transparency"); p:Destroy(); return t == 1 end)
+addSubTest("setrenderproperty", function() local p = Instance.new("Part", workspace); setrenderproperty(p, "Color", Color3.new(1,0,0)); local c = getrenderproperty(p, "Color"); p:Destroy(); return c == Color3.new(1,0,0) end)
+addSubTest("setrenderproperty", function() local p = Instance.new("Part", workspace); setrenderproperty(p, "Material", "Neon"); p:Destroy(); return true end)
+addSubTest("setrenderproperty", function() local p = Instance.new("Part", workspace); setrenderproperty(p, "Reflectance", 0.5); local r = getrenderproperty(p, "Reflectance"); p:Destroy(); return r == 0.5 end)
+addSubTest("setrenderproperty", function() local p = Instance.new("MeshPart", workspace); setrenderproperty(p, "TextureID", ""); p:Destroy(); return true end)
+addSubTest("setrenderproperty", function() local p = Instance.new("Part", workspace); setrenderproperty(p, "Material", Enum.Material.Neon); local m = getrenderproperty(p, "Material"); p:Destroy(); return m == Enum.Material.Neon or m == "Neon" end)
+
+-- ========== getnamecallmethod ==========
+addSubTest("getnamecallmethod", function() local obj = setmetatable({}, {__namecall = function(self,...) return getnamecallmethod() end}); return obj:Test() == "Test" end)
+addSubTest("getnamecallmethod", function() local obj = setmetatable({}, {__namecall = function(self,...) return getnamecallmethod() end}); return obj:Another() == "Another" end)
+addSubTest("getnamecallmethod", function() local obj = setmetatable({}, {__namecall = function(self,...) return getnamecallmethod() end}); return obj:Method123() == "Method123" end)
+addSubTest("getnamecallmethod", function() local obj = setmetatable({}, {__namecall = function(self,...) return getnamecallmethod() end}); return obj:WithArgs(1,2) == "WithArgs" end)
+addSubTest("getnamecallmethod", function() local obj = setmetatable({}, {__index = function(t,k) return getnamecallmethod() end}); return obj.Test == nil end) -- not a method call
+addSubTest("getnamecallmethod", function() return pcall(getnamecallmethod) end) -- outside namecall
+
+-- ========== isfile ==========
+addSubTest("isfile", function() writefile(testFileA, "x"); return isfile(testFileA) end)
+addSubTest("isfile", function() return isfile("/nonexistent") == false end)
+addSubTest("isfile", function() return isfile(testFolder) == false end)
+addSubTest("isfile", function() writefile(testFileB, ""); return isfile(testFileB) end)
+addSubTest("isfile", function() delfile(testFileA); return isfile(testFileA) == false end)
+
+-- ========== fireclickdetector ==========
+addSubTest("fireclickdetector", function() local p = Instance.new("Part", workspace); local cd = Instance.new("ClickDetector", p); local fired = false; cd.MouseClick:Connect(function() fired = true end); fireclickdetector(cd); p:Destroy(); return fired end)
+addSubTest("fireclickdetector", function() local p = Instance.new("Part", workspace); local cd = Instance.new("ClickDetector", p); local count = 0; cd.MouseClick:Connect(function() count = count+1 end); fireclickdetector(cd); fireclickdetector(cd); p:Destroy(); return count == 2 end)
+addSubTest("fireclickdetector", function() local p = Instance.new("Part", workspace); local cd = Instance.new("ClickDetector", p); fireclickdetector(cd, 0); p:Destroy(); return true end)
+addSubTest("fireclickdetector", function() local p = Instance.new("Part", workspace); local cd = Instance.new("ClickDetector", p); fireclickdetector(cd, 100); p:Destroy(); return true end)
+addSubTest("fireclickdetector", function() local p = Instance.new("Part", workspace); local cd = Instance.new("ClickDetector", p); local fired = false; cd.MouseClick:Connect(function(plr, dist) if dist == 50 then fired = true end end); fireclickdetector(cd, 50); p:Destroy(); return fired end)
+addSubTest("fireclickdetector", function() local p = Instance.new("Part", workspace); local cd = Instance.new("ClickDetector", p); fireclickdetector(cd, 9999); p:Destroy(); return true end)
+
+-- ========== getnilinstances ==========
+addSubTest("getnilinstances", function() return type(getnilinstances()) == "table" end)
+addSubTest("getnilinstances", function() local p = Instance.new("Part"); p:Destroy(); return type(getnilinstances()) == "table" end)
+addSubTest("getnilinstances", function() local p = Instance.new("Part"); p:Destroy(); local nilInsts = getnilinstances(); return table.find(nilInsts, p) ~= nil end)
+addSubTest("getnilinstances", function() local p = Instance.new("Part"); local ref = p; p:Destroy(); local nilInsts = getnilinstances(); return table.find(nilInsts, ref) ~= nil end)
+
+-- ========== getcustomasset ==========
+addSubTest("getcustomasset", function() return pcall(function() getcustomasset("rbxasset://textures/face.png") end) end)
+addSubTest("getcustomasset", function() return pcall(function() getcustomasset("") end) end)
+addSubTest("getcustomasset", function() return pcall(function() getcustomasset(123) end) end)
+addSubTest("getcustomasset", function() local ok, path = pcall(function() return getcustomasset("rbxassetid://123") end); return type(path) == "string" or ok end)
+addSubTest("getcustomasset", function() local ok, path = pcall(function() return getcustomasset("rbxasset://textures/face.png") end); if ok then return isfile(path) else return true end end)
+
+-- ========== getconnections ==========
+addSubTest("getconnections", function() local be = Instance.new("BindableEvent", workspace); local conn = be.Event:Connect(function() end); local conns = getconnections(be.Event); conn:Disconnect(); be:Destroy(); return #conns >= 1 end)
+addSubTest("getconnections", function() local be = Instance.new("BindableEvent", workspace); local conns = getconnections(be.Event); be:Destroy(); return #conns == 0 end)
+addSubTest("getconnections", function() local be = Instance.new("BindableEvent", workspace); local c1 = be.Event:Connect(function() end); local c2 = be.Event:Connect(function() end); local conns = getconnections(be.Event); c1:Disconnect(); c2:Disconnect(); be:Destroy(); return #conns == 2 end)
+addSubTest("getconnections", function() local be = Instance.new("BindableEvent", workspace); local conns = getconnections(be.Event); for _, conn in ipairs(conns) do if typeof(conn) ~= "RBXScriptConnection" then return false end end; be:Destroy(); return true end)
+
+-- ========== islclosure ==========
+addSubTest("islclosure", function() return islclosure(function() end) == true end)
+addSubTest("islclosure", function() return islclosure(print) == false end)
+addSubTest("islclosure", function() return islclosure(newcclosure(function() end)) == false end)
+addSubTest("islclosure", function() local upval = 5; local f = function() return upval end; return islclosure(f) == true end)
+addSubTest("islclosure", function() local f, e = loadstring("return 1"); if f then return islclosure(f) == true else return false end end)
+addSubTest("islclosure", function() return islclosure(nil) == false end)
+
+-- ========== restorefunction ==========
+addSubTest("restorefunction", function() local f = function() return 1 end; local old = hookfunction(f, function() return 2 end); restorefunction(f); return f() == 1 end)
+addSubTest("restorefunction", function() local f = function(x) return x*2 end; hookfunction(f, function(x) return x*3 end); restorefunction(f); return f(3) == 6 end)
+addSubTest("restorefunction", function() local f = function() return "orig" end; local h = hookfunction(f, function() return "hook" end); restorefunction(f); return f() == "orig" end)
+addSubTest("restorefunction", function() local f = function() end; restorefunction(f); return true end)
+addSubTest("restorefunction", function() local f = function() return 5 end; local h1 = hookfunction(f, function() return 10 end); local h2 = hookfunction(f, function() return 20 end); restorefunction(f); return f() == 5 end) -- restores original
+
+-- ========== loadstring ==========
+addSubTest("loadstring", function() local f,e = loadstring("return 2+2"); return f and f() == 4 end)
+addSubTest("loadstring", function() local f,e = loadstring("invalid"); return f == nil and e ~= nil end)
+addSubTest("loadstring", function() local f,e = loadstring(""); return f ~= nil end)
+addSubTest("loadstring", function() local f,e = loadstring("return ..."); local a,b = f(1,2); return a == 1 and b == 2 end)
+addSubTest("loadstring", function() local f,e = loadstring("error('test')"); return f and pcall(f) == false end)
+addSubTest("loadstring", function() local f,e = loadstring("return 1,2,3"); return f and select("#", f()) == 3 end)
+
+-- ========== cache.iscached ==========
+addSubTest("cache.iscached", function() return type(cache.iscached("key")) == "boolean" end)
+addSubTest("cache.iscached", function() cache.replace("cachetest", {}); return type(cache.iscached("cachetest")) == "boolean" end)
+addSubTest("cache.iscached", function() cache.replace("cachetest", nil); return cache.iscached("cachetest") == false or type(cache.iscached("cachetest")) == "boolean" end)
+addSubTest("cache.iscached", function() return cache.iscached("nonexistent_12345") == false end)
+addSubTest("cache.iscached", function() cache.replace("cachetest2", 123); return cache.iscached("cachetest2") == true end)
+
+-- ========== cache.invalidate ==========
+addSubTest("cache.invalidate", function() cache.replace("invkey", {}); cache.invalidate("invkey"); return true end)
+addSubTest("cache.invalidate", function() cache.invalidate("nonexistent"); return true end)
+addSubTest("cache.invalidate", function() cache.replace("invkey2", "data"); cache.invalidate("invkey2"); return cache.iscached("invkey2") == false end)
+addSubTest("cache.invalidate", function() cache.replace("invkey3", function() end); cache.invalidate("invkey3"); return cache.iscached("invkey3") == false end)
+
+-- ========== cloneref ==========
+addSubTest("cloneref", function() local p = Instance.new("Part", workspace); local c = cloneref(p); p:Destroy(); return typeof(c) == "Instance" end)
+addSubTest("cloneref", function() local p = Instance.new("Part", workspace); local c1 = cloneref(p); local c2 = cloneref(p); p:Destroy(); return c1 == c2 end)
+addSubTest("cloneref", function() local p = Instance.new("Part", workspace); local c = cloneref(p); p:Destroy(); return pcall(function() return c.Parent end) end)
+addSubTest("cloneref", function() local p = Instance.new("Part", workspace); local c = cloneref(p); p:Destroy(); return c == nil or typeof(c) == "Instance" end)
+addSubTest("cloneref", function() return pcall(cloneref, nil) == false end)
+
+-- ========== cache.replace ==========
+addSubTest("cache.replace", function() cache.replace("rep1", 123); return true end)
+addSubTest("cache.replace", function() cache.replace("rep2", {a=1}); return true end)
+addSubTest("cache.replace", function() cache.replace("rep3", nil); return true end)
+addSubTest("cache.replace", function() cache.replace("rep4", "string"); return true end)
+addSubTest("cache.replace", function() cache.replace("rep5", function() end); return true end)
+addSubTest("cache.replace", function() cache.replace("rep6", true); return true end)
+
+-- ========== getgc ==========
+addSubTest("getgc", function() return type(getgc()) == "table" end)
+addSubTest("getgc", function() return #getgc() >= 0 end)
+addSubTest("getgc", function() local t = {}; getgc(); return true end)
+addSubTest("getgc", function() local gc = getgc(); for _, v in ipairs(gc) do if v == testScript then return true end end; return true end)
+addSubTest("getgc", function() local gc = getgc(); for _, v in ipairs(gc) do if type(v) == "function" then return true end end; return true end)
+
+-- ========== compareinstances ==========
+addSubTest("compareinstances", function() local a = Instance.new("Part", workspace); local b = a; local r = compareinstances(a,b); a:Destroy(); return r end)
+addSubTest("compareinstances", function() local a = Instance.new("Part", workspace); local b = Instance.new("Part", workspace); local r = compareinstances(a,b); a:Destroy(); b:Destroy(); return r == false end)
+addSubTest("compareinstances", function() local a = Instance.new("Part", workspace); local c = cloneref(a); local r = compareinstances(a,c); a:Destroy(); return r end)
+addSubTest("compareinstances", function() return pcall(compareinstances, nil, nil) end)
+
+-- ========== base64_encode ==========
+addSubTest("base64_encode", function() local e = base64_encode("hello"); return type(e) == "string" and #e > 0 end)
+addSubTest("base64_encode", function() local e = base64_encode(""); return e == "" end)
+addSubTest("base64_encode", function() local long = string.rep("a", 200); local e = base64_encode(long); return base64_decode(e) == long end)
+addSubTest("base64_encode", function() local bin = "\0\1\2\3\255"; local enc = base64_encode(bin); return base64_decode(enc) == bin end)
+addSubTest("base64_encode", function() local e = base64_encode("test\nline"); return type(e) == "string" end)
+addSubTest("base64_encode", function() local e = base64_encode("Hello, World! 12345"); return type(e) == "string" and e:match("^[A-Za-z0-9+/=]+$") ~= nil end)
+
+-- ========== getrenv ==========
+addSubTest("getrenv", function() return type(getrenv()) == "table" end)
+addSubTest("getrenv", function() return getrenv()._VERSION ~= nil end)
+addSubTest("getrenv", function() return getrenv().print ~= nil end)
+addSubTest("getrenv", function() local r = getrenv(); return r == getrenv() end)
+addSubTest("getrenv", function() return rawget(getrenv(), "game") ~= nil end)
+
+-- ========== hookfunction ==========
+addSubTest("hookfunction", function() local f = function() return 1 end; local old = hookfunction(f, function() return 2 end); local r = f(); restorefunction(f); return r == 2 end)
+addSubTest("hookfunction", function() local f = function(a,b) return a+b end; hookfunction(f, function(a,b) return a*b end); local r = f(3,4); restorefunction(f); return r == 12 end)
+addSubTest("hookfunction", function() local f = function() return "a" end; local old = hookfunction(f, function(...) return old(...) .. "b" end); local r = f(); restorefunction(f); return r == "ab" end)
+addSubTest("hookfunction", function() local f = print; local old = hookfunction(f, function(...) end); local r = f; restorefunction(f); return r == print end)
+addSubTest("hookfunction", function() local f = function() return 1 end; local old = hookfunction(f, nil); restorefunction(f); return f() == 1 end) -- nil hook restores? depends
+
+-- ========== debug.getupvalue (singular) ==========
+addSubTest("debug.getupvalue", function() local x = "secret"; local f = function() return x end; return debug.getupvalue(f, 1) == "secret" end)
+addSubTest("debug.getupvalue", function() local a,b = 1,2; local f = function() return a+b end; return debug.getupvalue(f, 1) == 1 and debug.getupvalue(f, 2) == 2 end)
+addSubTest("debug.getupvalue", function() local f = function() end; return pcall(debug.getupvalue, f, 1) == false end)
+addSubTest("debug.getupvalue", function() local x = {1,2}; local f = function() return x[1] end; return debug.getupvalue(f, 1) == x end)
+addSubTest("debug.getupvalue", function() return pcall(debug.getupvalue, nil, 1) == false end)
+
+-- ========== setreadonly ==========
+addSubTest("setreadonly", function() local t = {}; setreadonly(t, true); local r = isreadonly(t); setreadonly(t, false); return r end)
+addSubTest("setreadonly", function() local t = {}; setreadonly(t, false); return isreadonly(t) == false end)
+addSubTest("setreadonly", function() local t = {}; setreadonly(t, true); return pcall(function() t[1] = 5 end) == false end)
+addSubTest("setreadonly", function() local t = {a=1}; setreadonly(t, true); return pcall(function() t.a = 2 end) == false end)
+addSubTest("setreadonly", function() local t = {}; setreadonly(t, true); setreadonly(t, false); t[1] = 10; return t[1] == 10 end)
+addSubTest("setreadonly", function() local t = {}; setreadonly(t, true); local ok = pcall(function() rawset(t, 1, 5) end); return ok end) -- rawset may bypass
+
+-- ========== getloadedmodules ==========
+addSubTest("getloadedmodules", function() return type(getloadedmodules()) == "table" end)
+addSubTest("getloadedmodules", function() return #getloadedmodules() >= 0 end)
+addSubTest("getloadedmodules", function() for _, v in ipairs(getloadedmodules()) do if typeof(v) ~= "Instance" then return false end end; return true end)
+
+-- ========== debug.getinfo ==========
+addSubTest("debug.getinfo", function() local info = debug.getinfo(1, "n"); return type(info) == "table" end)
+addSubTest("debug.getinfo", function() local info = debug.getinfo(1, "S"); return info.source ~= nil end)
+addSubTest("debug.getinfo", function() local function inner() return debug.getinfo(1, "l") end; return inner().currentline >= 0 end)
+addSubTest("debug.getinfo", function() local info = debug.getinfo(1, "nSlt"); return info ~= nil end)
+addSubTest("debug.getinfo", function() return pcall(debug.getinfo, 999, "n") end)
+
+-- ========== getscriptfromthread ==========
+addSubTest("getscriptfromthread", function() return typeof(getscriptfromthread(coroutine.running())) == "Instance" or getscriptfromthread(coroutine.running()) == nil end)
+addSubTest("getscriptfromthread", function() local co = coroutine.create(function() end); return typeof(getscriptfromthread(co)) == "Instance" or getscriptfromthread(co) == nil end)
+addSubTest("getscriptfromthread", function() local co = coroutine.create(function() end); coroutine.resume(co); return typeof(getscriptfromthread(co)) == "Instance" or getscriptfromthread(co) == nil end)
+addSubTest("getscriptfromthread", function() return pcall(getscriptfromthread, nil) == false end)
+
+-- ========== fireproximityprompt ==========
+addSubTest("fireproximityprompt", function() local p = Instance.new("Part", workspace); local pp = Instance.new("ProximityPrompt", p); local fired = false; pp.Triggered:Connect(function() fired = true end); fireproximityprompt(pp); p:Destroy(); return fired end)
+addSubTest("fireproximityprompt", function() local p = Instance.new("Part", workspace); local pp = Instance.new("ProximityPrompt", p); local count = 0; pp.Triggered:Connect(function() count = count+1 end); fireproximityprompt(pp); fireproximityprompt(pp); p:Destroy(); return count == 2 end)
+addSubTest("fireproximityprompt", function() local p = Instance.new("Part", workspace); local pp = Instance.new("ProximityPrompt", p); local plr; pp.Triggered:Connect(function(p) plr = p end); fireproximityprompt(pp); p:Destroy(); return plr ~= nil end)
+addSubTest("fireproximityprompt", function() local p = Instance.new("Part", workspace); local pp = Instance.new("ProximityPrompt", p); fireproximityprompt(pp); p:Destroy(); return true end)
+
+-- ========== WebSocket.connect ==========
+addSubTest("WebSocket.connect", function() return type(WebSocket) == "table" and type(WebSocket.connect) == "function" end)
+addSubTest("WebSocket.connect", function() return pcall(WebSocket.connect, "ws://localhost:1") end)
+addSubTest("WebSocket.connect", function() local ok, sock = pcall(WebSocket.connect, "ws://echo.websocket.org"); if ok then sock:Close() end; return ok end)
+
+-- ========== listfiles ==========
+addSubTest("listfiles", function() makefolder(testFolder); writefile(testFileA, "a"); writefile(testFileB, "b"); local files = listfiles(testFolder); return #files >= 2 end)
+addSubTest("listfiles", function() local files = listfiles("/nonexistent"); return files == nil or #files == 0 end)
+addSubTest("listfiles", function() local files = listfiles(testFolder); for _, f in ipairs(files) do if not isfile(f) then return false end end; return true end)
+addSubTest("listfiles", function() makefolder(testFolder .. "/empty"); local files = listfiles(testFolder .. "/empty"); return #files == 0 end)
+
+-- ========== gethui ==========
+addSubTest("gethui", function() return typeof(gethui()) == "Instance" end)
+addSubTest("gethui", function() return gethui():IsA("ScreenGui") or gethui():IsA("PlayerGui") end)
+addSubTest("gethui", function() return gethui() ~= nil end)
+
+-- ========== isreadonly ==========
+addSubTest("isreadonly", function() local t = {}; return isreadonly(t) == false end)
+addSubTest("isreadonly", function() local t = {}; setreadonly(t, true); local r = isreadonly(t); setreadonly(t, false); return r end)
+addSubTest("isreadonly", function() local t = {}; setreadonly(t, true); return isreadonly(t) == true end)
+addSubTest("isreadonly", function() return isreadonly(nil) == false end)
+
+-- ========== getrenderproperty ==========
+addSubTest("getrenderproperty", function() local p = Instance.new("Part", workspace); local t = getrenderproperty(p, "Transparency"); p:Destroy(); return type(t) == "number" end)
+addSubTest("getrenderproperty", function() local p = Instance.new("Part", workspace); setrenderproperty(p, "Color", Color3.new(0,1,0)); local c = getrenderproperty(p, "Color"); p:Destroy(); return c == Color3.new(0,1,0) end)
+addSubTest("getrenderproperty", function() local p = Instance.new("Part", workspace); setrenderproperty(p, "Material", "Neon"); local m = getrenderproperty(p, "Material"); p:Destroy(); return m == Enum.Material.Neon or m == "Neon" end)
+addSubTest("getrenderproperty", function() local p = Instance.new("Part", workspace); local r = getrenderproperty(p, "NonExistent"); p:Destroy(); return r == nil end)
+
+-- ========== lz4decompress ==========
+addSubTest("lz4decompress", function() local c = lz4compress("test123"); return lz4decompress(c) == "test123" end)
+addSubTest("lz4decompress", function() local orig = string.rep("B", 500); local comp = lz4compress(orig); return lz4decompress(comp) == orig end)
+addSubTest("lz4decompress", function() return pcall(lz4decompress, "invalid") == false end)
+addSubTest("lz4decompress", function() local comp = lz4compress(""); return lz4decompress(comp) == "" end)
+addSubTest("lz4decompress", function() return pcall(lz4decompress, nil) == false end)
+
+-- ========== appendfile ==========
+addSubTest("appendfile", function() writefile(testFileA, "start"); appendfile(testFileA, "end"); return readfile(testFileA) == "startend" end)
+addSubTest("appendfile", function() writefile(testFileB, "line1\n"); appendfile(testFileB, "line2\n"); return readfile(testFileB) == "line1\nline2\n" end)
+addSubTest("appendfile", function() local f = testFolder .. "/append_new.txt"; delfile(f); appendfile(f, "fresh"); return readfile(f) == "fresh" end)
+addSubTest("appendfile", function() local f = testFolder .. "/append_bin.txt"; writefile(f, "\0"); appendfile(f, "\255"); local r = readfile(f); return r == "\0\255" end)
+addSubTest("appendfile", function() local f = testFolder .. "/append_multi"; writefile(f, "A"); appendfile(f, "B"); appendfile(f, "C"); return readfile(f) == "ABC" end)
+
+-- ========== loadfile ==========
+addSubTest("loadfile", function() writefile(testFileA, "return 42"); local f,e = loadfile(testFileA); return f and f() == 42 end)
+addSubTest("loadfile", function() local f,e = loadfile("/nonexistent"); return f == nil and e ~= nil end)
+addSubTest("loadfile", function() writefile(testFileA, "return 1,2,3"); local f = loadfile(testFileA); local a,b,c = f(); return a == 1 and b == 2 and c == 3 end)
+addSubTest("loadfile", function() writefile(testFileA, "error('fail')"); local f = loadfile(testFileA); return f and pcall(f) == false end)
+
+-- ========== getinstances ==========
+addSubTest("getinstances", function() return type(getinstances()) == "table" end)
+addSubTest("getinstances", function() return #getinstances() > 0 end)
+addSubTest("getinstances", function() for _, v in ipairs(getinstances()) do if typeof(v) ~= "Instance" then return false end end; return true end)
+
+-- ========== isexecutorclosure ==========
+addSubTest("isexecutorclosure", function() return isexecutorclosure(newcclosure(function() end)) == true end)
+addSubTest("isexecutorclosure", function() return isexecutorclosure(print) == false end)
+addSubTest("isexecutorclosure", function() return isexecutorclosure(function() end) == false end)
+addSubTest("isexecutorclosure", function() local f = islclosure; return isexecutorclosure(f) == false end)
+addSubTest("isexecutorclosure", function() return isexecutorclosure(nil) == false end)
+
+-- ========== getcallbackvalue ==========
+addSubTest("getcallbackvalue", function() local bf = Instance.new("BindableFunction", workspace); bf.OnInvoke = function() return "cb" end; local v = getcallbackvalue(bf, "OnInvoke"); bf:Destroy(); return v ~= nil end)
+addSubTest("getcallbackvalue", function() local bf = Instance.new("BindableFunction", workspace); local v = getcallbackvalue(bf, "OnInvoke"); bf:Destroy(); return v == nil end)
+addSubTest("getcallbackvalue", function() local bf = Instance.new("BindableFunction", workspace); bf.OnInvoke = function(x) return x*2 end; local v = getcallbackvalue(bf, "OnInvoke"); bf:Destroy(); return type(v) == "function" end)
+addSubTest("getcallbackvalue", function() return pcall(getcallbackvalue, nil, "OnInvoke") == false end)
+
+-- ========== getfunctionhash ==========
+addSubTest("getfunctionhash", function() local h = getfunctionhash(function() end); return type(h) == "string" and #h > 0 end)
+addSubTest("getfunctionhash", function() return pcall(getfunctionhash, nil) == false end)
+addSubTest("getfunctionhash", function() local f1 = function() return 1 end; local f2 = function() return 1 end; local h1 = getfunctionhash(f1); local h2 = getfunctionhash(f2); return h1 == h2 or type(h1) == "string" end)
+addSubTest("getfunctionhash", function() local f1 = function() return 1 end; local f2 = function() return 2 end; return getfunctionhash(f1) ~= getfunctionhash(f2) or type(getfunctionhash(f1)) == "string" end)
+
+-- ========== replicatesignal ==========
+addSubTest("replicatesignal", function() local re = Instance.new("RemoteEvent", workspace); local ok = pcall(replicatesignal, re); re:Destroy(); return ok end)
+addSubTest("replicatesignal", function() local re = Instance.new("RemoteEvent", workspace); local fired = false; re.OnClientEvent:Connect(function() fired = true end); pcall(replicatesignal, re); task.wait(0.1); re:Destroy(); return true end)
+addSubTest("replicatesignal", function() local re = Instance.new("UnreliableRemoteEvent", workspace); local ok = pcall(replicatesignal, re); re:Destroy(); return ok end)
+
+-- ========== cleardrawcache ==========
+addSubTest("cleardrawcache", function() cleardrawcache(); return true end)
+addSubTest("cleardrawcache", function() local d = Drawing.new("Text"); d.Text = "X"; d.Visible = true; d:Remove(); cleardrawcache(); return true end)
+addSubTest("cleardrawcache", function() local d = Drawing.new("Line"); d.Visible = true; d:Remove(); cleardrawcache(); return true end)
+
+-- ========== decompile ==========
+addSubTest("decompile", function() local f = function() return 1 end; local src = decompile(f); return type(src) == "string" and #src > 0 end)
+addSubTest("decompile", function() local f = function() print("hello") end; local src = decompile(f); return string.find(src, "hello") ~= nil end)
+addSubTest("decompile", function() return pcall(decompile, nil) == false end)
+addSubTest("decompile", function() local f = function() if true then return "ok" end end; local src = decompile(f); return type(src) == "string" and src:find("ok") ~= nil end)
+addSubTest("decompile", function() local x = 5; local f = function() return x end; local src = decompile(f); return src:find("x") or src:find("upvalue") ~= nil end)
+
+-- ========== filtergc ==========
+addSubTest("filtergc", function() return type(filtergc(1)) == "table" end)
+addSubTest("filtergc", function() local p = Instance.new("Part", workspace); local res = filtergc(p); p:Destroy(); return type(res) == "table" end)
+addSubTest("filtergc", function() local res = filtergc("Instance"); return type(res) == "table" end)
+addSubTest("filtergc", function() local res = filtergc("string"); return type(res) == "table" end)
+addSubTest("filtergc", function() local res = filtergc("table"); return type(res) == "table" end)
+
+-- ========== identifyexecutor ==========
+addSubTest("identifyexecutor", function() local id = identifyexecutor(); return type(id) == "string" and #id > 0 end)
+addSubTest("identifyexecutor", function() return identifyexecutor() ~= nil end)
+
+-- ========== getscripthash ==========
+addSubTest("getscripthash", function() if testScript then local h = getscripthash(testScript); return type(h) == "string" end; return false, "no script" end)
+addSubTest("getscripthash", function() local s = Instance.new("LocalScript", game.Players.LocalPlayer.PlayerGui); s.Source = "print('hi')"; local h = getscripthash(s); s:Destroy(); return type(h) == "string" end)
+addSubTest("getscripthash", function() local s = Instance.new("ModuleScript", workspace); s.Source = "return {}"; local h = getscripthash(s); s:Destroy(); return type(h) == "string" end)
+
+-- ========== firesignal ==========
+addSubTest("firesignal", function() local be = Instance.new("BindableEvent", workspace); local fired = false; be.Event:Connect(function() fired = true end); firesignal(be.Event); be:Destroy(); return fired end)
+addSubTest("firesignal", function() local be = Instance.new("BindableEvent", workspace); local count = 0; be.Event:Connect(function() count = count+1 end); firesignal(be.Event); firesignal(be.Event); be:Destroy(); return count == 2 end)
+addSubTest("firesignal", function() local be = Instance.new("BindableEvent", workspace); local args; be.Event:Connect(function(...) args = {...} end); firesignal(be.Event, 1, 2, 3); be:Destroy(); return #args == 3 and args[1] == 1 and args[2] == 2 and args[3] == 3 end)
+addSubTest("firesignal", function() local be = Instance.new("BindableEvent", workspace); firesignal(be.Event); be:Destroy(); return true end) -- no connections
+
+-- ========== firetouchinterest ==========
+addSubTest("firetouchinterest", function() local p1 = Instance.new("Part", workspace); local p2 = Instance.new("Part", workspace); p1.Touched:Connect(function() end); firetouchinterest(p1, p2, 0); task.wait(0.1); p1:Destroy(); p2:Destroy(); return true end)
+addSubTest("firetouchinterest", function() local p1 = Instance.new("Part", workspace); local p2 = Instance.new("Part", workspace); p1.Touched:Connect(function() end); firetouchinterest(p1, p2, 1); task.wait(0.1); p1:Destroy(); p2:Destroy(); return true end)
+addSubTest("firetouchinterest", function() local p1 = Instance.new("Part", workspace); local p2 = Instance.new("Part", workspace); local fired = false; p1.Touched:Connect(function(touched) if touched == p2 then fired = true end end); firetouchinterest(p1, p2, 0); task.wait(0.1); p1:Destroy(); p2:Destroy(); return fired end)
+addSubTest("firetouchinterest", function() local p1 = Instance.new("Part", workspace); local p2 = Instance.new("Part", workspace); p1.Touched:Connect(function() end); firetouchinterest(p1, p2, 0); firetouchinterest(p1, p2, 1); task.wait(0.1); p1:Destroy(); p2:Destroy(); return true end)
+
+-- ========== debug.setstack ==========
+addSubTest("debug.setstack", function() local info = debug.getstack(1); debug.setstack(1, info); return true end)
+addSubTest("debug.setstack", function() local function inner() local s = debug.getstack(2); if s then debug.setstack(2, s) end; return true end; return inner() end)
+addSubTest("debug.setstack", function() return pcall(debug.setstack, 999, {}) end)
+
+-- ========== isrenderobj ==========
+addSubTest("isrenderobj", function() local p = Instance.new("Part", workspace); local r = isrenderobj(p); p:Destroy(); return r end)
+addSubTest("isrenderobj", function() local s = Instance.new("Script", workspace); local r = isrenderobj(s); s:Destroy(); return r == false end)
+addSubTest("isrenderobj", function() local m = Instance.new("MeshPart", workspace); local r = isrenderobj(m); m:Destroy(); return r end)
+addSubTest("isrenderobj", function() local gui = Instance.new("ScreenGui", game.Players.LocalPlayer.PlayerGui); local r = isrenderobj(gui); gui:Destroy(); return r == false end)
+addSubTest("isrenderobj", function() local p = Instance.new("Part", workspace); p.Transparency = 0.5; local r = isrenderobj(p); p:Destroy(); return r end)
+
+-- ========== getcallingscript ==========
+addSubTest("getcallingscript", function() return typeof(getcallingscript()) == "Instance" end)
+addSubTest("getcallingscript", function() local function inner() return getcallingscript() end; return typeof(inner()) == "Instance" end)
+addSubTest("getcallingscript", function() return getcallingscript() == testScript end)
+
+-- ========== debug.getstack ==========
+addSubTest("debug.getstack", function() return type(debug.getstack(1)) == "table" end)
+addSubTest("debug.getstack", function() local function inner() return type(debug.getstack(1)) == "table" end; return inner() end)
+addSubTest("debug.getstack", function() local function inner() return debug.getstack(2) ~= nil end; return inner() end)
+addSubTest("debug.getstack", function() return pcall(debug.getstack, 999) end)
+
+-- ========== getsenv ==========
+addSubTest("getsenv", function() if testScript then return type(getsenv(testScript)) == "table" else return false, "no script" end end)
+addSubTest("getsenv", function() local s = Instance.new("Script", workspace); s.Source = "local a=1"; local env = getsenv(s); s:Destroy(); return type(env) == "table" end)
+addSubTest("getsenv", function() local s = Instance.new("LocalScript", game.Players.LocalPlayer.PlayerGui); s.Source = "local b=2"; local env = getsenv(s); s:Destroy(); return type(env) == "table" end)
+addSubTest("getsenv", function() return pcall(getsenv, nil) == false end)
+
+-- ========== clonefunction ==========
+addSubTest("clonefunction", function() local f = function(x) return x*2 end; local c = clonefunction(f); return c(5) == 10 and c ~= f end)
+addSubTest("clonefunction", function() local f = function() return "original" end; local c = clonefunction(f); return c() == "original" end)
+addSubTest("clonefunction", function() local f = function() end; local c = clonefunction(f); return c ~= f end)
+addSubTest("clonefunction", function() local upval = 5; local f = function() return upval end; local c = clonefunction(f); upval = 10; return c() == 5 end)
+addSubTest("clonefunction", function() return pcall(clonefunction, nil) == false end)
+
+-- ========== debug.getconstant ==========
+addSubTest("debug.getconstant", function() local f = function() return "hello", 42 end; return debug.getconstant(f, 1) == "hello" and debug.getconstant(f, 2) == 42 end)
+addSubTest("debug.getconstant", function() local f = function() return nil, true end; return debug.getconstant(f, 1) == nil and debug.getconstant(f, 2) == true end)
+addSubTest("debug.getconstant", function() local f = function() return 1,2,3 end; return debug.getconstant(f, 2) == 2 end)
+addSubTest("debug.getconstant", function() return pcall(debug.getconstant, nil, 1) == false end)
+
+-- ========== getgenv ==========
+addSubTest("getgenv", function() return type(getgenv()) == "table" end)
+addSubTest("getgenv", function() getgenv().__unc_test = 123; return getgenv().__unc_test == 123 end)
+addSubTest("getgenv", function() return getgenv() == getgenv() end)
+
+-- ========== newcclosure ==========
+addSubTest("newcclosure", function() local f = newcclosure(function() return "test" end); return f() == "test" end)
+addSubTest("newcclosure", function() local f = newcclosure(function(x) return x+1 end); return f(5) == 6 end)
+addSubTest("newcclosure", function() return iscclosure(newcclosure(function() end)) == true end)
+addSubTest("newcclosure", function() local f = newcclosure(function(...) return ... end); local a,b = f(1,2,3); return a == 1 and b == 2 end)
+addSubTest("newcclosure", function() return pcall(newcclosure, nil) == false end)
+
+-- ========== base64_decode ==========
+addSubTest("base64_decode", function() local enc = base64_encode("decode me"); return base64_decode(enc) == "decode me" end)
+addSubTest("base64_decode", function() return pcall(base64_decode, "!!!") end)
+addSubTest("base64_decode", function() return base64_decode(base64_encode("")) == "" end)
+addSubTest("base64_decode", function() local original = "Test123!@#"; return base64_decode(base64_encode(original)) == original end)
+addSubTest("base64_decode", function() return pcall(base64_decode, nil) == false end)
+
+-- ========== debug.getconstants ==========
+addSubTest("debug.getconstants", function() local f = function() return "a", 1, true end; local c = debug.getconstants(f); return c[1] == "a" and c[2] == 1 and c[3] == true end)
+addSubTest("debug.getconstants", function() local f = function() end; local c = debug.getconstants(f); return #c == 0 end)
+addSubTest("debug.getconstants", function() local f = function() return nil, false end; local c = debug.getconstants(f); return c[1] == nil and c[2] == false end)
+addSubTest("debug.getconstants", function() return pcall(debug.getconstants, nil) == false end)
+
+-- ========== delfolder (now at end) ==========
+local extraFolder = testFolder .. "/extra"
+makefolder(extraFolder)
+writefile(extraFolder .. "/f.txt", "x")
+makefolder(extraFolder .. "/sub")
+addSubTest("delfolder", function() delfolder(extraFolder); return not isfolder(extraFolder) end)
+addSubTest("delfolder", function() delfolder("/fake/folder"); return true end)
+addSubTest("delfolder", function() local fold = testFolder .. "/del_me"; makefolder(fold); writefile(fold .. "/file.txt", "data"); delfolder(fold); return not isfolder(fold) end)
+addSubTest("delfolder", function() delfolder(testFolder); return not isfolder(testFolder) end) -- deletes main test folder
+
+-- Cleanup leftover test folder
+pcall(function()
+	if isfolder(testFolder) then
+		for _, file in ipairs(listfiles(testFolder)) do
+			pcall(delfile, file)
+		end
+		pcall(delfolder, testFolder)
+	end
+end)
+
+-- Print results
+print("================ UNC MULTI-TEST RESULTS ================")
+for _, func in ipairs(funcResults) do
+	local funcPassed = func.passed
+	local funcTotal = func.total
+	local statusChar = (funcPassed == funcTotal) and "✔" or "✘"
+	print(string.format("[%s] %s: %d/%d sub-tests passed", statusChar, func.name, funcPassed, funcTotal))
+	for _, detail in ipairs(func.details) do
+		if detail.status == "PASS" then
+			print("   [PASS]")
+		elseif detail.status == "FAIL" then
+			print("   [FAIL] " .. detail.msg)
+		else
+			print("   [ERROR] " .. detail.msg)
+		end
+	end
+end
+
+local score = math.floor((passed / total) * 100)
+print("--------------------------------------------------")
+print(string.format("Overall Score: %d / %d sub-tests passed (%d%%)", passed, total, score))
+print("==================================================")
